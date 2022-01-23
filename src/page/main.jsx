@@ -1,61 +1,96 @@
-import {useUser} from '../components/context/useUser'
 import { useEffect, useState } from 'react';
-import { searchFilter } from '../components/utils/searchFilter';
-import UsersList from '../components/usersList';
+import { useHistory, useParams } from 'react-router-dom';
 import Search from '../components/search'
-import Favourities from '../components/favourities';
+import TableBlock from '../components/tableBlock';
+import TransactionsTable from '../components/transactionsTable';
+import { getBlock } from '../services/http.service';
 
 
 const Main = () => {
-  const { users, getUsers } = useUser();
+  const history = useHistory()
+  const { numberTrans } = useParams();
+  const [isLoading, setLoading] = useState(true);
   const [searchValue, setSearchValue] = useState('');
-  const [favourities, setFavorities] = useState([]);
-  const [dragUser, setDragUser] = useState();
-  let [order, setOrder] = useState(1);
-  useEffect(() => {
-    getUsers();
-  }, []);
+  const [block, setBlock] = useState()
+  const [error, setError] = useState({searchValue:null, loadError: null})
+  const [showTrasaction, setShowTrasaction] = useState(false)
 
+  async function getData(id){
+    try {
+      const { result } = await getBlock(id);
+      setError(prev =>  {return { ...prev, loadError:null}})
+      setBlock(result);
+      setLoading(false)
+    } catch (error) {
+      setError(prev =>  {return { ...prev, loadError:error.message}})
+      setLoading(false)
+    }
+    
+  }
+  useEffect(async () => {
+    if (Number(numberTrans)){
+      getData(numberTrans);
+    }else{
+      getData();
+    }
+  }, []);
   function handleSearch(e){
     setSearchValue(e.target.value);
   };
-  function dragStartHandle(e, card) {
-    setDragUser(card);
-  };
-  function dropHandle(e, card) {
-    e.preventDefault();
-    if (!card.order){
-        if (order > favourities.length + 1) {
-          setOrder(favourities.length);
-        } else {
-          setOrder((prevState) => (prevState += 1));
-        }
-        card.order = order
+  
+  function handleSubmitSearch(e) {
+    e.preventDefault()
+    if (isNaN(Number(searchValue))){
+        setError(prev =>  {return { ...prev, searchValue: 'Please enter the number' }})
+    }else{
+      setLoading(true);
+      setShowTrasaction(false);
+      getData(searchValue);
+      setError(prev =>  {return { ...prev, searchValue: null}})
+      history.push(`/block/${searchValue}`);
     }
-    setFavorities((prevState) => [...new Set([...prevState, card])]);
+    
   };
-  function deleteFavourites(id) {
-    setFavorities((prevState) => prevState.filter((user) => user.id !== id));
-  };
-
-  if (users) {
-    const filtretedUser = searchValue.length > 0?searchFilter(users, searchValue):users;
-    return (
-      <main className="main">
-        <Search onHandleSearch={handleSearch} value={searchValue} />
-        <div className="main__raw">
-          <div className="main__column">
-            <UsersList users={filtretedUser} onDragStart={dragStartHandle} searchValue={searchValue}/>
-          </div>
-          <div className="main__column">
-            <Favourities user = {dragUser} onDropHandle ={dropHandle} favourities={favourities} onDeleteHandle = {deleteFavourites}/>
-          </div>
-        </div>
-      </main>
+  function numberDecreaceEncrease(mode) {
+    setLoading(true)
+    setShowTrasaction(false);
+    let blockNum = parseInt(block.number, 16);
+    blockNum = mode === 'dcs'
+      ? blockNum - 1
+      : blockNum + 1
       
-    );
+    getData(blockNum);
+    history.push(`/block/${blockNum}`);
   }
-  return <div className="loader"></div>;
+
+  function onShowTransaction(){
+    setShowTrasaction(prev => setShowTrasaction(!prev))
+  }
+  if (!isLoading && !error.loadError){
+    return (
+      <>
+    <div className="p-4">
+      {error.searchValue ? <p className="text-danger">{error.searchValue}</p> : null }
+      <Search onHandleSearch={handleSearch} onHandleSubmit={handleSubmitSearch} value={searchValue} />
+      <div className="pt-5">
+        <h2>Block  #{parseInt(block.number, 16)}</h2>
+        <TableBlock block = {block} onHandleNumberDecreaseEncrease = {numberDecreaceEncrease}  showTrasaction = {onShowTransaction}/>
+        {showTrasaction && <TransactionsTable transactions={block.transactions} showTrasaction = {onShowTransaction}/>}
+    </div>
+    </div>
+    </>
+    )
+  }
+  return (
+    <>
+    {error.loadError ? 
+                                <div class="alert alert-danger" role="alert">
+                                      {error.loadError}, try late!
+                                  </div>
+                                  : <div className="loader"></div>}</>
+  );
 };
 
 export default Main;
+
+
